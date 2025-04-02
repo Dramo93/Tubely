@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"net/http"
 	"io"
+	"path/filepath"
+	"os"
+	"crypto/rand"
 	"encoding/base64"
 
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
@@ -50,20 +53,41 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		respondWithError(w, http.StatusBadRequest, "Missing Content-Type for thumbnail", nil)
 		return
 	}
-
-	
+		// Extract the file extension from the Content-Type
+	var fileExt string
+	switch mediaType {
+	case "image/jpeg", "image/jpg":
+		fileExt = ".jpg"
+	case "image/png":
+		fileExt = ".png"
+	// Add other cases as needed
+	default:
+		respondWithError(w, http.StatusBadRequest, "Unsupported file type", nil)
+		return
+	}
+	filePathIncomplete, _ := MakeRandomizedFilePath()
+	filePathForThumb := filepath.Join(cfg.assetsRoot, filePathIncomplete + fileExt)
 
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, "Unable to parse form file", err)
 		return
 	}
 
-	b, err := io.ReadAll(file)
+
+	fileThumb, err := os.Create(filePathForThumb)
 	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "Unable to read all", err)
+		respondWithError(w, http.StatusInternalServerError, "Unable to create file", err)
 		return
 	}
-	encodedThumbnail := base64.StdEncoding.EncodeToString(b)
+	defer fileThumb.Close()
+
+	if _, err := io.Copy(fileThumb, file); err != nil {
+		respondWithError(w, http.StatusBadRequest, "Unable to create file", err)
+		return
+	}
+
+
+
 	videoMetadata, err := cfg.db.GetVideo(videoID)
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, "Unable to query the video", err)
@@ -75,9 +99,18 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	dataUrl := fmt.Sprintf("data:%s;base64,%s", mediaType, encodedThumbnail)
+	dataUrl := fmt.Sprintf("http://localhost:%s/assets/%s%s", cfg.port, filePathForThumb, fileExt)
 	videoMetadata.ThumbnailURL = &dataUrl
 	err = cfg.db.UpdateVideo(videoMetadata)
 
 	respondWithJSON(w, http.StatusOK, videoMetadata)
+}
+
+func MakeRandomizedFilePath() (string, error) {
+	token := make([]byte, 32)
+	_, err := rand.Read(token)
+	if err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(token), nil
 }
