@@ -85,12 +85,25 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	aspectRatio, err := getVideoAspectRatio(tmpVideo.Name())
+	if _, err = io.Copy(tmpVideo, file); err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Error with aspect ratio", err)
+		return
+	}
+	var prefixRatio string
+	if aspectRatio == "16:9"{
+		prefixRatio = "landscape/"
+	} else if aspectRatio == "9:16"{
+		prefixRatio = "portrait/"
+	} else {
+		prefixRatio = "other/"
+	}
 	//setto il file pointer all'inizio
 	tmpVideo.Seek(0, io.SeekStart)
 
 	//setto il nome/path del file
 	var uploadFileName string
-	uploadFileName = getAssetPath(mediaType)
+	uploadFileName = prefixRatio + getAssetPath(mediaType)
 
 	//creazione parametri per l'insert
 	inputParams := s3.PutObjectInput{

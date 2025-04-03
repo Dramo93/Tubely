@@ -7,6 +7,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"os/exec"
+	"log"
+	"encoding/json"
+	"bytes"
 )
 
 func (cfg apiConfig) ensureAssetsDir() error {
@@ -42,4 +46,39 @@ func mediaTypeToExt(mediaType string) string {
 		return ".bin"
 	}
 	return "." + parts[1]
+}
+
+func getVideoAspectRatio(filePath string) (string, error) {
+
+	type ffprobeOutput struct {
+		Streams []struct {
+			Width  int `json:"width"`
+			Height int `json:"height"`
+		} `json:"streams"`
+	}
+
+	cmd := exec.Command("ffprobe", "-v", "error", "-print_format", "json", "-show_streams",filePath)
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	err := cmd.Run()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	var streamsToAnalize ffprobeOutput
+	if err := json.Unmarshal(out.Bytes(), &streamsToAnalize); err != nil {
+        log.Fatalf("Error unmarshalling JSON: %v", err)
+    }
+
+	tolerance := 0.01
+	ratio := float64(streamsToAnalize.Streams[0].Width) / float64(streamsToAnalize.Streams[0].Height)
+
+	if (ratio > 16.0/9.0-tolerance) && (ratio < 16.0/9.0+tolerance) {
+		return "16:9", nil
+	} else if (ratio > 9.0/16.0-tolerance) && (ratio < 9.0/16.0+tolerance) {
+		return "9:16", nil
+	} else {
+		return "other", nil
+	}
+
 }
