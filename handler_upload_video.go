@@ -102,14 +102,24 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 	tmpVideo.Seek(0, io.SeekStart)
 
 	//setto il nome/path del file
+
+	processedVideoPath, _ := processVideoForFastStart(tmpVideo.Name())
+	defer os.Remove(processedVideoPath)
+
+	processedVideoFile, err := os.Open(processedVideoPath)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Error opening processed video", err)
+		return
+	}
+	defer processedVideoFile.Close()
+
 	var uploadFileName string
 	uploadFileName = prefixRatio + getAssetPath(mediaType)
-
 	//creazione parametri per l'insert
 	inputParams := s3.PutObjectInput{
 		Bucket: &cfg.s3Bucket,
 		Key:	&uploadFileName,
-		Body:	tmpVideo,
+		Body:	processedVideoFile,
 		ContentType: &mediaType,	   
 	}
 
